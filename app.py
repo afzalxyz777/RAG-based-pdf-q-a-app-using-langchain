@@ -13,9 +13,15 @@ load_dotenv()
 st.title("PDF Question Answering App")
 st.write("Upload a PDF ad ask question about it")
 
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+    
+if "qa_chain" not in st.session_state:
+    st.session_state.qa_chain = None
+
 upload_file = st.file_uploader("Upload your PDF" , type="pdf")
 
-if upload_file is not None:
+if upload_file is not None and st.session_state.qa_chain is None:
     with tempfile.NamedTemporaryFile(delete = False, suffix=".pdf") as tmp:
         tmp.write(upload_file.read())
         tmp_path = tmp.name
@@ -40,19 +46,36 @@ if upload_file is not None:
         
         #llm
         llm = GoogleGenerativeAI(model="gemini-2.5-flash")
-        qa_chain = RetrievalQA.from_chain_type(
+        st.session_state.qa_chain = RetrievalQA.from_chain_type(
             llm = llm,
             retriever = retriever
         )
+        st.session_state.pages = len(pages)
+        st.session_state.chunks = len(chunks)
+        
     st.success(f"PDF processed!! {len(pages)} pages, {len(chunks)} chunks ready.")
     
-    question = st.text_input("Ask a question about your PDF:")
+#chat history
+for message in st.session_state.chat_history:
+    if message["role"] == "user":
+        st.write(f"**you:** {message['content']}")
+    else:
+        st.write(f"**AI:** {message['content']}")
+            
+#question input
+if st.session_state.qa_chain is not None:
+    question = st.text_input("Ask a question about your pdf:", key = "question input")
+        
+    if question and question != st.session_state.get("last_question", ""):
+        with st.spinner("finding answer...."):
+            answer = st.session_state.qa_chain.invoke(question)
+            result = answer["result"]
     
-    if question:
-        with st.spinner("Finding answer....."):
-            answer = qa_chain.invoke(question)
-        st.write("**Answer:**")
-        st.write(answer['result'])
-    
+        #save to history of the chat
+        st.session_state.last_question = question
+        st.session_state.chat_history.append({"role": "user", "content": question})
+        st.session_state.chat_history.append({"role": "ai", "content": result})
+        
+        st.rerun()
         
 
