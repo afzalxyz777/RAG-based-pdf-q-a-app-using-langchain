@@ -42,13 +42,13 @@ if upload_file is not None and st.session_state.qa_chain is None:
         
         embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
         vectorstore = FAISS.from_documents(chunks, embeddings)
-        retriever = vectorstore.as_retriever(search_kwargs={'k':3})
+        st.session_state.retriever = vectorstore.as_retriever(search_kwargs={'k':3})
         
         #llm
         llm = GoogleGenerativeAI(model="gemini-2.5-flash")
         st.session_state.qa_chain = RetrievalQA.from_chain_type(
             llm = llm,
-            retriever = retriever
+            retriever = st.session_state.retriever
         )
         st.session_state.pages = len(pages)
         st.session_state.chunks = len(chunks)
@@ -70,11 +70,16 @@ if st.session_state.qa_chain is not None:
         with st.spinner("finding answer...."):
             answer = st.session_state.qa_chain.invoke(question)
             result = answer["result"]
+            
+            #for getting source pages
+            docs = st.session_state.retriever.invoke(question)
+            sources = list(set([str(doc.metadata.get("page", "unknown") + 1)for doc in docs]))
+            source_text = f"📄 Sources: Page(s) {', '.join(sources)}"
     
         #save to history of the chat
         st.session_state.last_question = question
         st.session_state.chat_history.append({"role": "user", "content": question})
-        st.session_state.chat_history.append({"role": "ai", "content": result})
+        st.session_state.chat_history.append({"role": "ai", "content": result + "\n\n" + source_text})
         
         st.rerun()
         
